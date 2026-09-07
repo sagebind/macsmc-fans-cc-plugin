@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/sagebind/macsmc-fans-cc-plugin/compare/0.1.0...0.1.1) - 2026-09-07
+
+- Fix missing `build` make target in COPR builds.
+
 ## [0.1.0](https://github.com/sagebind/tuxedo-infinitybook-gen10-cc-plugin/releases/tag/0.1.0) - 2026-09-06
 
 ### Feat
