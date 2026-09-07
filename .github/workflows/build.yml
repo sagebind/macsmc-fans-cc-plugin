@@ -1,0 +1,25 @@
+name: build
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v4
+
+      - name: Build
+        run: mise run build
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tuxedo-infinitybook-gen10
+          path: target/release/tuxedo-infinitybook-gen10

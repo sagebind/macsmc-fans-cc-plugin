@@ -1,0 +1,7 @@
+id = "macsmc-fans"
+type = "device"
+version = "0.1.0"
+description = "Apple Silicon Mac support."
+address = "/tmp/macsmc-fans.sock"
+executable = "macsmc-fans"
+privileged = true

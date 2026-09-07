@@ -1,0 +1,51 @@
+[package]
+name = "macsmc-fans-cc-plugin"
+version = "0.1.0"
+authors = ["Stephen M. Coakley <me@stephencoakley.com>"]
+description = "Plugin for CoolerControl for Apple Silicon Macs"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+rust-version = "1.86.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "macsmc-fans"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+env_logger = "0.11"
+log = "0.4"
+prost = "0.14"
+systemd-journal-logger = "2.2"
+tokio-util = "0.7"
+tonic = "0.14"
+tonic-prost = "0.14"
+
+[dependencies.clap]
+version = "4"
+features = ["derive"]
+
+[dependencies.nix]
+version = "0.31"
+features = ["ioctl"]
+
+[dependencies.sysinfo]
+version = "0.38"
+default-features = false
+features = ["system"]
+
+[dependencies.tokio]
+version = "1.48"
+features = ["fs", "macros", "rt", "signal"]
+
+[build-dependencies]
+# BUILD DEPENDENCY: `protobuf-compiler` Required
+tonic-prost-build = "0.14.2"
+
+[profile.release]
+strip = "symbols"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
