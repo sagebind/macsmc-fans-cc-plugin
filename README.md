@@ -20,7 +20,18 @@ The Asahi Linux team does **not** recommend enabling userspace control of the sy
 
 In theory, any device supported by `macsmc-hwmon` should work with this plugin.
 
-## Usage
+## Installation
+
+### Fedora
+
+Prebuilt binaries are published to the [sagebind/coolercontrol-plugins](https://copr.fedorainfracloud.org/coprs/sagebind/coolercontrol-plugins/) COPR repository for Fedora. You can install this plugin from there:
+
+```sh
+sudo dnf copr enable sagebind/coolercontrol-plugins
+sudo dnf install macsmc-fans-cc-plugin
+```
+
+### Manual
 
 Installing the plugin can be done by cloning this repository and running
 
