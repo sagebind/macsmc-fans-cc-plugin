@@ -1,15 +1,17 @@
-.DEFAULT_GOAL := target/release/macsmc-fans
+.DEFAULT_GOAL := build
 plugins_dir := /var/lib/coolercontrol/plugins
 executable := macsmc-fans
 service_id := macsmc-fans
 
-.PHONY: clean install
+.PHONY: build clean install
 
 clean:
 	@-$(RM) -rf target
 	@-$(RM) -rf vendor
 
-target/release/$(executable):
+target/release/$(executable): build
+
+build:
 	@cargo build --locked --release
 
 install: target/release/$(executable)
