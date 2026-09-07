@@ -9,70 +9,64 @@ use crate::{
         SpeedProfileRequest, SpeedProfileResponse, StatusRequest, StatusResponse,
         device_service_server::DeviceService, health_response,
     },
+    fan::Fan,
     models::{
         self,
         v1::{
             ChannelInfo, Device, DeviceInfo, SpeedOptions, channel_info::Options, status::FanSpeed,
         },
     },
-    tuxedo_io::{Fan, TuxedoIo},
 };
-use std::{collections::HashMap, io, sync::Arc};
+use anyhow::Result;
+use std::collections::HashMap;
 use sysinfo::Product;
-use tokio::{sync::Mutex, task::spawn_blocking, time::Instant};
+use tokio::time::Instant;
 use tonic::{Request, Response, Status};
 
-const DEVICE_ID: &str = "tuxedo";
-const DEFAULT_DEVICE_NAME: &str = "TUXEDO InfinityBook Gen10";
-const FAN_1_CHANNEL_ID: &str = "fan1";
-const FAN_2_CHANNEL_ID: &str = "fan2";
-
-pub struct TuxedoService {
+pub struct FanService {
     start_time: Instant,
-    tuxedo_io: Arc<Mutex<Option<TuxedoIo>>>,
+    fans: Vec<Fan>,
+    device: Device,
 }
 
-impl TuxedoService {
-    pub fn new() -> Self {
-        Self {
-            start_time: Instant::now(),
-            tuxedo_io: Arc::new(Mutex::new(None)),
+impl FanService {
+    pub async fn new() -> Result<Self> {
+        let fans = crate::fan::probe().await?;
+        let mut channels = HashMap::new();
+
+        for fan in &fans {
+            channels.insert(
+                fan.id().to_string(),
+                ChannelInfo {
+                    label: Some(fan.label().into()),
+                    options: Some(Options::SpeedOptions(SpeedOptions {
+                        min_duty: u32::from(fan.min_rpm() / fan.max_rpm()),
+                        max_duty: 100,
+                        fixed_enabled: true,
+                        extension: None,
+                    })),
+                },
+            );
         }
-    }
 
-    async fn with_io<T: Send + 'static>(
-        &self,
-        f: impl Send + FnOnce(&mut Option<TuxedoIo>) -> Result<T, Status> + 'static,
-    ) -> Result<T, Status> {
-        let arc = self.tuxedo_io.clone();
-
-        spawn_blocking(move || {
-            let mut tuxedo_io = arc.blocking_lock();
-            f(&mut *tuxedo_io)
+        Ok(Self {
+            start_time: Instant::now(),
+            device: Device {
+                id: SERVICE_ID.into(),
+                name: Product::name().unwrap_or_else(|| SERVICE_ID.into()),
+                uid_info: None,
+                info: Some(DeviceInfo {
+                    channels,
+                    ..Default::default()
+                }),
+            },
+            fans,
         })
-        .await
-        .map_err(|e| Status::from_error(Box::new(e)))
-        .flatten()
-    }
-
-    async fn with_io_initialized<T: Send + 'static>(
-        &self,
-        f: impl Send + FnOnce(&TuxedoIo) -> Result<T, Status> + 'static,
-    ) -> Result<T, Status> {
-        self.with_io(move |tuxedo_io| {
-            let tuxedo_io = match tuxedo_io.as_mut() {
-                Some(io) => io,
-                None => tuxedo_io.insert(TuxedoIo::open()?),
-            };
-
-            f(tuxedo_io)
-        })
-        .await
     }
 }
 
 #[tonic::async_trait]
-impl DeviceService for TuxedoService {
+impl DeviceService for FanService {
     async fn health(
         &self,
         _request: Request<HealthRequest>,
@@ -90,92 +84,60 @@ impl DeviceService for TuxedoService {
         &self,
         _request: Request<ListDevicesRequest>,
     ) -> Result<Response<ListDevicesResponse>, Status> {
-        self.with_io_initialized(|tuxedo_io| {
-            let device = get_device(tuxedo_io)?;
-
-            Ok(Response::new(ListDevicesResponse {
-                devices: vec![device],
-            }))
-        })
-        .await
+        Ok(Response::new(ListDevicesResponse {
+            devices: vec![self.device.clone()],
+        }))
     }
 
     async fn initialize_device(
         &self,
         _request: Request<InitializeDeviceRequest>,
     ) -> Result<Response<InitializeDeviceResponse>, Status> {
-        self.with_io_initialized(|_| {
-            // Nothing else to do, enter will ensure a connection is established.
-
-            Ok(Response::new(InitializeDeviceResponse {}))
-        })
-        .await
+        Ok(Response::new(InitializeDeviceResponse {}))
     }
 
     async fn shutdown(
         &self,
         _request: Request<ShutdownRequest>,
     ) -> Result<Response<ShutdownResponse>, Status> {
-        self.with_io(|tuxedo_io| {
-            // Reset the fans to auto before exiting, or they may be stuck off
-            // which could cause overheating.
-            if let Some(tuxedo_io) = tuxedo_io.take() {
-                tuxedo_io.set_fans_auto()?;
-
-                // Disconnect the driver handle.
-                drop(tuxedo_io);
-            }
-
-            Ok(Response::new(ShutdownResponse {}))
-        })
-        .await
+        Ok(Response::new(ShutdownResponse {}))
     }
 
     async fn status(
         &self,
         _request: Request<StatusRequest>,
     ) -> Result<Response<StatusResponse>, Status> {
-        self.with_io_initialized(|tuxedo_io| {
-            Ok(Response::new(StatusResponse {
-                status: vec![
-                    models::v1::Status {
-                        id: FAN_1_CHANNEL_ID.into(),
-                        metric: Some(models::v1::status::Metric::Speed(FanSpeed {
-                            duty: Some(tuxedo_io.get_fan_speed(Fan::Fan1)? as f64),
-                            rpm: None,
-                        })),
-                    },
-                    models::v1::Status {
-                        id: FAN_2_CHANNEL_ID.into(),
-                        metric: Some(models::v1::status::Metric::Speed(FanSpeed {
-                            duty: Some(tuxedo_io.get_fan_speed(Fan::Fan2)? as f64),
-                            rpm: None,
-                        })),
-                    },
-                ],
-            }))
-        })
-        .await
+        Ok(Response::new(StatusResponse {
+            status: self
+                .fans
+                .iter()
+                .map(|fan| models::v1::Status {
+                    id: fan.id().to_string(),
+                    metric: fan
+                        .get_current_rpm()
+                        .map(|rpm| {
+                            models::v1::status::Metric::Speed(FanSpeed {
+                                duty: None,
+                                rpm: Some(rpm),
+                            })
+                        })
+                        .ok(),
+                })
+                .collect(),
+        }))
     }
 
     async fn reset_channel(
         &self,
         _request: Request<ResetChannelRequest>,
     ) -> Result<Response<ResetChannelResponse>, Status> {
-        self.with_io_initialized(|tuxedo_io| {
-            tuxedo_io.set_fans_auto()?;
-
-            Ok(Response::new(ResetChannelResponse {}))
-        })
-        .await
+        Ok(Response::new(ResetChannelResponse {}))
     }
 
     async fn enable_manual_fan_control(
         &self,
         _request: Request<EnableManualFanControlRequest>,
     ) -> Result<Response<EnableManualFanControlResponse>, Status> {
-        // Nothing to do, will automatically activate manual control when setting
-        // a speed.
         Ok(Response::new(EnableManualFanControlResponse {}))
     }
 
@@ -183,27 +145,21 @@ impl DeviceService for TuxedoService {
         &self,
         request: Request<FixedDutyRequest>,
     ) -> Result<Response<FixedDutyResponse>, Status> {
-        self.with_io_initialized(move |tuxedo_io| {
-            let fan = if request.get_ref().channel_id == FAN_1_CHANNEL_ID {
-                Fan::Fan1
-            } else if request.get_ref().channel_id == FAN_2_CHANNEL_ID {
-                Fan::Fan2
-            } else {
-                return Err(Status::invalid_argument("Unknown channel ID"));
-            };
+        for fan in &self.fans {
+            if fan.id().to_string() == request.get_ref().channel_id {
+                let rpm = fan.max_rpm() * request.get_ref().duty as u32 / 100u32;
+                fan.set_target_rpm(rpm)?;
+                return Ok(Response::new(FixedDutyResponse {}));
+            }
+        }
 
-            tuxedo_io.set_fan_speed(fan, request.get_ref().duty as u8)?;
-
-            Ok(Response::new(FixedDutyResponse {}))
-        })
-        .await
+        Err(Status::invalid_argument("Unknown channel ID"))
     }
 
     async fn speed_profile(
         &self,
         _request: Request<SpeedProfileRequest>,
     ) -> Result<Response<SpeedProfileResponse>, Status> {
-        // TODO: Apply a speed profile to the device channel
         Err(Status::unimplemented("No Firmware Profiles"))
     }
 
@@ -224,57 +180,4 @@ impl DeviceService for TuxedoService {
     ) -> Result<Response<CustomFunctionOneResponse>, Status> {
         Err(Status::unimplemented("No Custom Function"))
     }
-}
-
-impl Drop for TuxedoService {
-    fn drop(&mut self) {
-        // Ensure that fan control is always relinquished to the firmware when we
-        // stop controlling it, even if a proper shutdown sequence did not occur.
-        if let Some(tuxedo_io) = self.tuxedo_io.blocking_lock().take() {
-            let _ = tuxedo_io.set_fans_auto();
-        }
-    }
-}
-
-fn get_device(tuxedo_io: &TuxedoIo) -> io::Result<Device> {
-    let min_duty = tuxedo_io.get_fan_min_speed()?.into();
-    let max_duty = 100;
-
-    let mut channels = HashMap::new();
-
-    channels.insert(
-        FAN_1_CHANNEL_ID.into(),
-        ChannelInfo {
-            label: Some("Fan 1".into()),
-            options: Some(Options::SpeedOptions(SpeedOptions {
-                min_duty,
-                max_duty,
-                fixed_enabled: true,
-                ..Default::default()
-            })),
-        },
-    );
-
-    channels.insert(
-        FAN_2_CHANNEL_ID.into(),
-        ChannelInfo {
-            label: Some("Fan 2".into()),
-            options: Some(Options::SpeedOptions(SpeedOptions {
-                min_duty,
-                max_duty,
-                fixed_enabled: true,
-                ..Default::default()
-            })),
-        },
-    );
-
-    Ok(Device {
-        id: DEVICE_ID.into(),
-        name: Product::name().unwrap_or_else(|| DEFAULT_DEVICE_NAME.into()),
-        uid_info: None,
-        info: Some(DeviceInfo {
-            channels,
-            ..Default::default()
-        }),
-    })
 }

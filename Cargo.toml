@@ -16,6 +16,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 env_logger = "0.11"
+lexical = {
+    version = "7",
+    default-features = false,
+    features = ["parse-integers", "write-integers"],
+}
 log = "0.4"
 prost = "0.14"
 systemd-journal-logger = "2.2"
@@ -26,10 +31,6 @@ tonic-prost = "0.14"
 [dependencies.clap]
 version = "4"
 features = ["derive"]
-
-[dependencies.nix]
-version = "0.31"
-features = ["ioctl"]
 
 [dependencies.sysinfo]
 version = "0.38"

@@ -1,10 +1,7 @@
+mod fan;
 mod service;
-mod sys;
-mod tuxedo_io;
 
-use crate::{
-    device_service::v1::device_service_server::DeviceServiceServer, service::TuxedoService,
-};
+use crate::{device_service::v1::device_service_server::DeviceServiceServer, service::FanService};
 use anyhow::Result;
 use clap::Parser;
 use log::{LevelFilter, error, info};
@@ -17,7 +14,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tonic::{codegen::tokio_stream::wrappers::UnixListenerStream, transport::Server};
 
-pub const SERVICE_ID: &str = "tuxedo-infinitybook-gen10";
+pub const SERVICE_ID: &str = "macsmc-fans";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const ENV_CC_LOG: &str = "CC_LOG";
 
@@ -47,7 +44,7 @@ async fn main() -> Result<()> {
     setup_logging()?;
     info!("Starting {SERVICE_ID} v{VERSION}");
 
-    let service = TuxedoService::new();
+    let service = FanService::new().await?;
 
     // The default socket path for device services requires privileged access. Using the following
     // will work for both privileged and non-privileged services.
