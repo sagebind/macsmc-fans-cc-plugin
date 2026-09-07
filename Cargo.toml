@@ -33,7 +33,7 @@ version = "4"
 features = ["derive"]
 
 [dependencies.sysinfo]
-version = "0.38"
+version = "0.39"
 default-features = false
 features = ["system"]
 
