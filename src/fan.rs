@@ -17,6 +17,7 @@ pub(crate) async fn probe() -> io::Result<Vec<Fan>> {
         if let Ok(file_name) = entry.file_name().into_string() {
             if let Some(s) = file_name.strip_prefix("fan") {
                 if let Some(n) = s.strip_suffix("_target") {
+                    log::info!("discovered fan: {}", entry.path().display());
                     fans.push(Fan::new(root, n.parse().unwrap())?);
                 }
             }
@@ -40,11 +41,14 @@ impl Fan {
     fn new(root: &Path, id: u8) -> io::Result<Self> {
         let label = fs::read_to_string(root.join(format!("fan{id}_label")))?
             .trim()
+            .trim()
             .to_owned();
         let min_rpm = fs::read_to_string(root.join(format!("fan{id}_min")))?
+            .trim()
             .parse()
             .unwrap();
         let max_rpm = fs::read_to_string(root.join(format!("fan{id}_max")))?
+            .trim()
             .parse()
             .unwrap();
 

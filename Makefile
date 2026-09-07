@@ -1,9 +1,9 @@
-.DEFAULT_GOAL := build
-plugins_dir := '/var/lib/coolercontrol/plugins'
-executable := 'macsmc-fans'
-service_id := 'macsmc-fans'
+.DEFAULT_GOAL := target/release/macsmc-fans
+plugins_dir := /var/lib/coolercontrol/plugins
+executable := macsmc-fans
+service_id := macsmc-fans
 
-.PHONY: clean build install
+.PHONY: clean install
 
 clean:
 	@-$(RM) -rf target
@@ -17,7 +17,7 @@ install: target/release/$(executable)
 	@install -m755 target/release/$(executable) $(DESTDIR)$(plugins_dir)/$(service_id)
 	@install -m644 manifest.toml $(DESTDIR)$(plugins_dir)/$(service_id)
 
-run: build
+run: target/release/$(executable)
 	@sudo target/release/$(executable)
 
 uninstall:

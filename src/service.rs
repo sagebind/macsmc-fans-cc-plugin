@@ -117,7 +117,7 @@ impl DeviceService for FanService {
                         .get_current_rpm()
                         .map(|rpm| {
                             models::v1::status::Metric::Speed(FanSpeed {
-                                duty: None,
+                                duty: Some(rpm as f64 / fan.max_rpm() as f64 * 100f64),
                                 rpm: Some(rpm),
                             })
                         })
