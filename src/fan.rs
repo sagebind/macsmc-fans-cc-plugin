@@ -2,15 +2,16 @@ use std::{
     fs::{self, File},
     io,
     os::unix::fs::FileExt,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 static SYSFS_ROOT: &str =
-    "/sys/module/macsmc_hwmon/drivers/platform:macsmc-hwmon/macsmc-hwmon/hwmon/hwmon1";
+    "/sys/module/macsmc_hwmon/drivers/platform:macsmc-hwmon/macsmc-hwmon/hwmon";
 
 pub(crate) async fn probe() -> io::Result<Vec<Fan>> {
-    let root = Path::new(SYSFS_ROOT);
-    let mut read = tokio::fs::read_dir(root).await?;
+    // Find the first hwmon device and use it.
+    let root = find_attr_root().await?.unwrap();
+    let mut read = tokio::fs::read_dir(&root).await?;
     let mut fans = Vec::new();
 
     while let Some(entry) = read.next_entry().await? {
@@ -18,13 +19,34 @@ pub(crate) async fn probe() -> io::Result<Vec<Fan>> {
             if let Some(s) = file_name.strip_prefix("fan") {
                 if let Some(n) = s.strip_suffix("_target") {
                     log::info!("discovered fan: {}", entry.path().display());
-                    fans.push(Fan::new(root, n.parse().unwrap())?);
+                    fans.push(Fan::new(&root, n.parse().unwrap())?);
                 }
             }
         }
     }
 
     Ok(fans)
+}
+
+async fn find_attr_root() -> io::Result<Option<PathBuf>> {
+    let mut read = tokio::fs::read_dir(SYSFS_ROOT).await?;
+
+    while let Some(entry) = read.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            let path = entry.path();
+
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("hwmon"))
+                .unwrap_or(false)
+            {
+                return Ok(Some(path));
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 /// Wrapper around the sysfs API.
