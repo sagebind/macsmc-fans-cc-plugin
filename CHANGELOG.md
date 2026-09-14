@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.2](https://github.com/sagebind/macsmc-fans-cc-plugin/compare/0.1.1...0.1.2) - 2026-09-14
 
+### Fixed
+
+- Fix startup error when the `hwmon` device index changes on subsequent reboots. We now do not assume the device index at all.
+
 ### Build
 
-- *(deps)* bump sysinfo from 0.38.4 to 0.39.6 ([#1](https://github.com/sagebind/macsmc-fans-cc-plugin/pull/1))
+- _(deps)_ bump sysinfo from 0.38.4 to 0.39.6 ([#1](https://github.com/sagebind/macsmc-fans-cc-plugin/pull/1))
 
 ## [0.1.1](https://github.com/sagebind/macsmc-fans-cc-plugin/compare/0.1.0...0.1.1) - 2026-09-07
 
